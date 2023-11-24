@@ -1,4 +1,6 @@
 
+![workflow](https://github.com/javifercep/Mcb-for-rust/actions/workflows/rust.yml/badge.svg)
+
 # Motion Control Bus - Rust
 
  This is a personal project for learning the basics of Rust.
