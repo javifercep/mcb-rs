@@ -6,5 +6,8 @@ edition = "2021"
 [lib]
 name = "mcb"
 
+[dependencies]
+crc = "3.2.1"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
