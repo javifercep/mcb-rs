@@ -25,12 +25,16 @@ the [`PhysicalInterface`] trait.
 use mcb::mcb_main::{create_main_mcb, Main};
 use mcb::{Config, Init, IntfError, IntfResult, PhysicalInterface, MAX_FRAME_SIZE};
 use mcb::IntfResult::*;
+
 struct NewInterface;
+
 impl PhysicalInterface for NewInterface {
+    
     fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
     // your implementation
     Ok(Success)
     }
+
     fn raw_read(&self) -> Result<IntfResult, IntfError> {
         // ignore this block. Created to pass cargo test --doc
         let mut msg = [0u16; MAX_FRAME_SIZE];
@@ -41,16 +45,21 @@ impl PhysicalInterface for NewInterface {
         // your implementation
         Ok(Data(msg))
     }
+
     fn is_data2read(&self) -> Result<IntfResult, IntfError> {
         // your implementation
         Ok(Success)
     }
 }
+
 fn main() {
     let interface: NewInterface = NewInterface;
+
     let mcb_main = create_main_mcb(Some(interface));
+    
     let mut mcb_main_cfg = mcb_main.init();
     let result = mcb_main_cfg.writeu8(0x0Au16, 1u8);
+
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
 ```
