@@ -8,11 +8,11 @@ pub enum CommandType {
 pub struct Request {
     pub address: u16,
     pub command: CommandType,
-    data_value: [u16; MAX_FRAME_SIZE],
+    _data_value: [u16; MAX_FRAME_SIZE],
 }
 pub struct Node<STATE, INTERFACE: PhysicalInterface> {
     frame: Frame,
-    state: STATE,
+    _state: STATE,
     interface: INTERFACE,
 }
 
@@ -24,7 +24,7 @@ where
     pub fn init(self) -> Node<Config, INTF> {
         Node {
             frame: self.frame,
-            state: Config,
+            _state: Config,
             interface: self.interface,
         }
     }
@@ -40,7 +40,7 @@ where
         self.frame.raw[COMMAND_IDX] = cmd + (add << 4);
         self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
 
-        let built_frame = &self.frame.raw[..6];
+        let built_frame = &self.frame.raw[..7];
 
         self.interface.raw_write(built_frame)
     }
@@ -64,6 +64,10 @@ where
             _ => return Err(IntfError::Interface),
         };
 
+        if data[6] != self.interface.crc_checksum(&data[..5]) {
+            return Err(IntfError::Crc);
+        }
+
         let command = match data[1] & 0xEu16 {
             CFG_STD_READ => CommandType::Read,
             CFG_STD_WRITE => CommandType::Write,
@@ -72,8 +76,8 @@ where
 
         Ok(Request {
             address: data[COMMAND_IDX] >> 4,
-            command: command,
-            data_value: data,
+            command,
+            _data_value: *data,
         })
     }
 
@@ -84,7 +88,7 @@ where
     pub fn into_cyclic(self) -> Node<Cyclic, INTF> {
         Node {
             frame: self.frame,
-            state: Cyclic,
+            _state: Cyclic,
             interface: self.interface,
         }
     }
@@ -95,31 +99,45 @@ impl<INTF> Node<Cyclic, INTF>
 where
     INTF: PhysicalInterface,
 {
-    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
-        self.frame.raw[0] = self.frame.address;
-        self.frame.raw[1] = CFG_STD_ACK + (add << 4);
-        self.frame.raw[2] = data as u16;
-        self.frame.raw[6] = 0u16;
+    fn write_internal(&mut self, add: u16, cmd: u16) -> Result<IntfResult, IntfError> {
+        self.frame.raw[HEADER_IDX] = self.frame.address;
+        self.frame.raw[COMMAND_IDX] = cmd + (add << 4);
+        self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
 
         let built_frame = &self.frame.raw[..6];
 
-        return self.interface.raw_write(built_frame);
+        self.interface.raw_write(built_frame)
     }
 
-    pub fn readu8(&mut self, add: u16) -> Result<IntfResult, IntfError> {
-        self.frame.raw[0] = self.frame.address;
-        self.frame.raw[1] = CFG_IDLE;
-        self.frame.raw[6] = 0u16;
+    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data as u16;
 
-        let built_frame = &self.frame.raw[..6];
+        self.write_internal(add, CFG_STD_ACK)
+    }
 
-        return self.interface.raw_read();
+    pub fn read(&mut self) -> Result<Request, IntfError> {
+        let data = match self.interface.raw_read() {
+            Ok(IntfResult::Data(value)) => value,
+            _ => return Err(IntfError::Interface),
+        };
+
+        let command = match data[1] & 0xEu16 {
+            CFG_STD_READ => CommandType::Read,
+            CFG_STD_WRITE => CommandType::Write,
+            _ => return Err(IntfError::Interface),
+        };
+
+        Ok(Request {
+            address: data[COMMAND_IDX] >> 4,
+            command,
+            _data_value: *data,
+        })
     }
 
     pub fn into_config(self) -> Node<Config, INTF> {
         Node {
             frame: self.frame,
-            state: Config,
+            _state: Config,
             interface: self.interface,
         }
     }
@@ -130,11 +148,9 @@ pub fn create_node_mcb<INTF: PhysicalInterface>(interface: Option<INTF>) -> Node
     Node {
         frame: Frame {
             address: 0u16,
-            command: 0u16,
             raw: [0u16; MAX_FRAME_SIZE],
-            crc: 0u16,
         },
-        state: Init,
+        _state: Init,
         interface: interface_in,
     }
 }
