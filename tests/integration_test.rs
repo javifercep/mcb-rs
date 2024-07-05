@@ -415,7 +415,7 @@ fn test_node_wrong_main_crc() {
                 panic!("Something wrong");
             }
         };
-        /// TODO check 0x01020000000000000000A922
+        
         let _result = match node_cfg.writeu8(ADDRESS, 1u8) {
             Ok(Success) => true,
             _ => false,

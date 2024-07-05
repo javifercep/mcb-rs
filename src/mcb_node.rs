@@ -64,7 +64,7 @@ where
             _ => return Err(IntfError::Interface),
         };
 
-        if data[6] != self.interface.crc_checksum(&data[..5]) {
+        if data[6] != self.interface.crc_checksum(&data[..6]) {
             return Err(IntfError::Crc);
         }
 
@@ -104,7 +104,7 @@ where
         self.frame.raw[COMMAND_IDX] = cmd + (add << 4);
         self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
 
-        let built_frame = &self.frame.raw[..6];
+        let built_frame = &self.frame.raw[..7];
 
         self.interface.raw_write(built_frame)
     }

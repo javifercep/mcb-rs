@@ -128,7 +128,7 @@ pub trait PhysicalInterface {
     /// available
     fn crc_checksum(&self, frame: &[u16]) -> u16 {
         const XMODEM: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
-        unsafe { XMODEM.checksum(frame[1..5].align_to::<u8>().1) }
+        unsafe { XMODEM.checksum(frame[..6].align_to::<u8>().1) }
     }
 }
 
