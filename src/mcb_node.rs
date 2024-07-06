@@ -8,7 +8,7 @@ pub enum CommandType {
 pub struct Request {
     pub address: u16,
     pub command: CommandType,
-    _data_value: [u16; MAX_FRAME_SIZE],
+    data_value: [u16; MAX_FRAME_SIZE],
 }
 pub struct Node<STATE, INTERFACE: PhysicalInterface> {
     frame: Frame,
@@ -52,10 +52,48 @@ where
         self.write_internal(0, CFG_ERR_BIT | addcmd)
     }
 
-    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
+    pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
         self.frame.raw[CFG_DATA_IDX] = data as u16;
 
         self.write_internal(add, CFG_STD_ACK)
+    }
+
+    pub fn write_i8(&mut self, add: u16, data: i8) -> Result<IntfResult, IntfError> {
+        self.write_u8(add, data as u8)
+    }
+
+    pub fn write_u16(&mut self, add: u16, data: u16) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data;
+
+        self.write_internal(add, CFG_STD_ACK)
+    }
+
+    pub fn write_i16(&mut self, add: u16, data: i16) -> Result<IntfResult, IntfError> {
+        self.write_u16(add, data as u16)
+    }
+
+    pub fn write_u32(&mut self, add: u16, data: u32) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data as u16;
+        self.frame.raw[CFG_DATA_IDX + 1] = (data >> 16) as u16;
+
+        self.write_internal(add, CFG_STD_ACK)
+    }
+
+    pub fn write_i32(&mut self, add: u16, data: i32) -> Result<IntfResult, IntfError> {
+        self.write_u32(add, data as u32)
+    }
+
+    pub fn write_u64(&mut self, add: u16, data: u64) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data as u16;
+        self.frame.raw[CFG_DATA_IDX + 1] = (data >> 16) as u16;
+        self.frame.raw[CFG_DATA_IDX + 2] = (data >> 32) as u16;
+        self.frame.raw[CFG_DATA_IDX + 3] = (data >> 48) as u16;
+
+        self.write_internal(add, CFG_STD_ACK)
+    }
+
+    pub fn write_i64(&mut self, add: u16, data: i64) -> Result<IntfResult, IntfError> {
+        self.write_u64(add, data as u64)
     }
 
     pub fn read(&mut self) -> Result<Request, IntfError> {
@@ -77,8 +115,44 @@ where
         Ok(Request {
             address: data[COMMAND_IDX] >> 4,
             command,
-            _data_value: *data,
+            data_value: *data,
         })
+    }
+
+    pub fn get_data_u8(&self, request: &Request) -> u8 {
+        request.data_value[CFG_DATA_IDX] as u8
+    }
+
+    pub fn get_data_i8(&self, request: &Request) -> i8 {
+        self.get_data_u8(request) as i8
+    }
+
+    pub fn get_data_u16(&self, request: &Request) -> u16 {
+        request.data_value[CFG_DATA_IDX]
+    }
+
+    pub fn get_data_i16(&self, request: &Request) -> i16 {
+        self.get_data_u16(request) as i16
+    }
+
+    pub fn get_data_u32(&self, request: &Request) -> u32 {
+        request.data_value[CFG_DATA_IDX] as u32
+            | ((request.data_value[CFG_DATA_IDX + 1] as u32) << 16)
+    }
+
+    pub fn get_data_i32(&self, request: &Request) -> i32 {
+        self.get_data_u32(request) as i32
+    }
+
+    pub fn get_data_u64(&self, request: &Request) -> u64 {
+        request.data_value[CFG_DATA_IDX] as u64
+            | ((request.data_value[CFG_DATA_IDX + 1] as u64) << 16)
+            | ((request.data_value[CFG_DATA_IDX + 2] as u64) << 32)
+            | ((request.data_value[CFG_DATA_IDX + 3] as u64) << 48)
+    }
+
+    pub fn get_data_i64(&self, request: &Request) -> i64 {
+        self.get_data_u64(request) as i64
     }
 
     pub fn listen(&self) -> Result<IntfResult, IntfError> {
@@ -109,7 +183,7 @@ where
         self.interface.raw_write(built_frame)
     }
 
-    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
+    pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
         self.frame.raw[CFG_DATA_IDX] = data as u16;
 
         self.write_internal(add, CFG_STD_ACK)
@@ -130,7 +204,7 @@ where
         Ok(Request {
             address: data[COMMAND_IDX] >> 4,
             command,
-            _data_value: *data,
+            data_value: *data,
         })
     }
 

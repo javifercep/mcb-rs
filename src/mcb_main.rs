@@ -66,7 +66,7 @@ where
         Ok(IntfResult::Data(data))
     }
 
-    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
+    pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
         self.frame.raw[CFG_DATA_IDX] = data as u16;
 
         match self.internal_access(add, CFG_STD_WRITE) {
@@ -75,7 +75,56 @@ where
         }
     }
 
-    pub fn writeu32(&mut self, add: u16, data: u32) -> Result<IntfResult, IntfError> {
+    pub fn read_u8(&mut self, add: u16) -> Result<u8, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as u8),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_i8(&mut self, add: u16, data: i8) -> Result<IntfResult, IntfError> {
+        self.write_u8(add, data as u8)
+    }
+
+    pub fn read_i8(&mut self, add: u16) -> Result<i8, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as i8),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_u16(&mut self, add: u16, data: u16) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data;
+
+        match self.internal_access(add, CFG_STD_WRITE) {
+            Ok(_) => Ok(IntfResult::Success),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn read_u16(&mut self, add: u16) -> Result<u16, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX]),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_i16(&mut self, add: u16, data: i16) -> Result<IntfResult, IntfError> {
+        self.write_u16(add, data as u16)
+    }
+
+    pub fn read_i16(&mut self, add: u16) -> Result<i16, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as i16),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_u32(&mut self, add: u16, data: u32) -> Result<IntfResult, IntfError> {
         self.frame.raw[CFG_DATA_IDX] = data as u16;
         self.frame.raw[CFG_DATA_IDX + 1] = (data >> 16) as u16;
 
@@ -85,9 +134,63 @@ where
         }
     }
 
-    pub fn readu8(&mut self, add: u16) -> Result<u8, IntfError> {
+    pub fn read_u32(&mut self, add: u16) -> Result<u32, IntfError> {
         match self.internal_access(add, CFG_STD_READ) {
-            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as u8),
+            Ok(IntfResult::Data(value)) => {
+                Ok(value[CFG_DATA_IDX] as u32 | ((value[CFG_DATA_IDX + 1] as u32) << 16))
+            }
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_i32(&mut self, add: u16, data: i32) -> Result<IntfResult, IntfError> {
+        self.write_u32(add, data as u32)
+    }
+
+    pub fn read_i32(&mut self, add: u16) -> Result<i32, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => {
+                Ok(value[CFG_DATA_IDX] as i32 | ((value[CFG_DATA_IDX + 1] as i32) << 16))
+            }
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_u64(&mut self, add: u16, data: u64) -> Result<IntfResult, IntfError> {
+        self.frame.raw[CFG_DATA_IDX] = data as u16;
+        self.frame.raw[CFG_DATA_IDX + 1] = (data >> 16) as u16;
+        self.frame.raw[CFG_DATA_IDX + 2] = (data >> 32) as u16;
+        self.frame.raw[CFG_DATA_IDX + 3] = (data >> 48) as u16;
+
+        match self.internal_access(add, CFG_STD_WRITE) {
+            Ok(_) => Ok(IntfResult::Success),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn read_u64(&mut self, add: u16) -> Result<u64, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as u64
+                | ((value[CFG_DATA_IDX + 1] as u64) << 16)
+                | ((value[CFG_DATA_IDX + 2] as u64) << 32)
+                | ((value[CFG_DATA_IDX + 3] as u64) << 48)),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_i64(&mut self, add: u16, data: i64) -> Result<IntfResult, IntfError> {
+        self.write_u64(add, data as u64)
+    }
+
+    pub fn read_i64(&mut self, add: u16) -> Result<i64, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as i64
+                | ((value[CFG_DATA_IDX + 1] as i64) << 16)
+                | ((value[CFG_DATA_IDX + 2] as i64) << 32)
+                | ((value[CFG_DATA_IDX + 3] as i64) << 48)),
             Err(e) => Err(e),
             _ => Err(IntfError::Interface),
         }
@@ -143,7 +246,7 @@ where
         Ok(IntfResult::Data(data))
     }
 
-    pub fn writeu8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
+    pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
         self.frame.raw[CFG_DATA_IDX] = data as u16;
 
         match self.internal_access(add, CFG_STD_WRITE) {
@@ -152,7 +255,7 @@ where
         }
     }
 
-    pub fn readu8(&mut self, add: u16) -> Result<u8, IntfError> {
+    pub fn read_u8(&mut self, add: u16) -> Result<u8, IntfError> {
         match self.internal_access(add, CFG_STD_READ) {
             Ok(IntfResult::Data(value)) => Ok(value[CFG_DATA_IDX] as u8),
             Err(e) => Err(e),

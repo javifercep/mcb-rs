@@ -43,7 +43,7 @@ impl PhysicalInterface for NewInterface {
         msg[6] = 17282;
         // end of ignore block
         // your implementation
-        Ok(Data(msg))
+        Ok(Data(Box::new(msg)))
     }
 
     fn is_data2read(&self) -> Result<IntfResult, IntfError> {

@@ -80,7 +80,7 @@ const COMMAND_IDX: usize = 1;
 const CFG_DATA_IDX: usize = 2;
 const CYC_DATA_IDX: usize = 6;
 
-/// Successful results of an MCB access 
+/// Successful results of an MCB access
 #[derive(Debug)]
 pub enum IntfResult {
     Success,
@@ -89,7 +89,7 @@ pub enum IntfResult {
     Data(Box<[u16; MAX_FRAME_SIZE]>),
 }
 
-/// Error results of an MCB access 
+/// Error results of an MCB access
 #[derive(Debug)]
 pub enum IntfError {
     Interface,
