@@ -96,6 +96,14 @@ where
         self.write_u64(add, data as u64)
     }
 
+    pub fn write_f32(&mut self, add: u16, data: f32) -> Result<IntfResult, IntfError> {
+        self.write_u32(add, data as u32)
+    }
+
+    pub fn write_f64(&mut self, add: u16, data: f64) -> Result<IntfResult, IntfError> {
+        self.write_u64(add, data as u64)
+    }
+
     pub fn read(&mut self) -> Result<Request, IntfError> {
         let data = match self.interface.raw_read() {
             Ok(IntfResult::Data(value)) => value,
@@ -153,6 +161,14 @@ where
 
     pub fn get_data_i64(&self, request: &Request) -> i64 {
         self.get_data_u64(request) as i64
+    }
+
+    pub fn get_data_f32(&self, request: &Request) -> f32 {
+        self.get_data_u32(request) as f32
+    }
+
+    pub fn get_data_f64(&self, request: &Request) -> f64 {
+        self.get_data_u64(request) as f64
     }
 
     pub fn listen(&self) -> Result<IntfResult, IntfError> {

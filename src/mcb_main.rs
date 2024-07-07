@@ -196,6 +196,36 @@ where
         }
     }
 
+    pub fn write_f32(&mut self, add: u16, data: f32) -> Result<IntfResult, IntfError> {
+        self.write_u32(add, data as u32)
+    }
+
+    pub fn read_f32(&mut self, add: u16) -> Result<f32, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => {
+                Ok((value[CFG_DATA_IDX] as u32 | ((value[CFG_DATA_IDX + 1] as u32) << 16)) as f32)
+            }
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
+    pub fn write_f64(&mut self, add: u16, data: f64) -> Result<IntfResult, IntfError> {
+        self.write_u64(add, data as u64)
+    }
+
+    pub fn read_f64(&mut self, add: u16) -> Result<f64, IntfError> {
+        match self.internal_access(add, CFG_STD_READ) {
+            Ok(IntfResult::Data(value)) => Ok((value[CFG_DATA_IDX] as u64
+                | ((value[CFG_DATA_IDX + 1] as u64) << 16)
+                | ((value[CFG_DATA_IDX + 2] as u64) << 32)
+                | ((value[CFG_DATA_IDX + 3] as u64) << 48))
+                as f64),
+            Err(e) => Err(e),
+            _ => Err(IntfError::Interface),
+        }
+    }
+
     pub fn into_cyclic(self) -> Main<Cyclic, INTF> {
         Main {
             frame: self.frame,

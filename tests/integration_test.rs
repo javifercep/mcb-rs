@@ -8,6 +8,8 @@ use mcb::IntfResult::*;
 use std::thread;
 use std::{sync::mpsc, sync::mpsc::Receiver, sync::mpsc::Sender};
 
+use float_eq::assert_float_eq;
+
 struct NodeThread<T> {
     tx_channel: Sender<T>,
     rx_channel: Receiver<T>,
@@ -790,6 +792,152 @@ fn test_std_write_i64() {
         create_main_mcb(Some(main_thread));
     let mut mcb_main_cfg = mcb_main_test.init();
     let result = mcb_main_cfg.write_i64(ADDRESS, DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_f32() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: f32 = 1.0 as f32;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_f32(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread));
+    let mut mcb_main_cfg = mcb_main_test.init();
+    let result = mcb_main_cfg.read_f32(ADDRESS);
+
+    assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f32::EPSILON);
+}
+
+#[test]
+fn test_std_write_f32() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: f32 = 1.0 as f32;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_f32(&request) == DATA {
+            let _ = node_cfg.write_f32(request.address, DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread));
+    let mut mcb_main_cfg = mcb_main_test.init();
+    let result = mcb_main_cfg.write_f32(ADDRESS, DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_f64() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: f64 = 1.0 as f64;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_f64(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread));
+    let mut mcb_main_cfg = mcb_main_test.init();
+    let result = mcb_main_cfg.read_f64(ADDRESS);
+
+    assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f64::EPSILON);
+}
+
+#[test]
+fn test_std_write_f64() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: f64 = 1.0 as f64;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_f64(&request) == DATA {
+            let _ = node_cfg.write_f64(request.address, DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread));
+    let mut mcb_main_cfg = mcb_main_test.init();
+    let result = mcb_main_cfg.write_f64(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }

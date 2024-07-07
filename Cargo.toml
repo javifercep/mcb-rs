@@ -9,5 +9,8 @@ name = "mcb"
 [dependencies]
 crc = "3.2.1"
 
+[dev-dependencies]
+float_eq = "1.0.1"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
