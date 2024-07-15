@@ -23,19 +23,19 @@
 //!
 //! impl PhysicalInterface for NewInterface {
 //!
-//!     fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+//!     fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
 //!         // your implementation
 //!         Ok(Success)
 //!     }
 //!
-//!     fn raw_read(&self) -> Result<IntfResult, IntfError> {
+//!     fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
 //!         // ignore this block. Created to pass cargo test --doc
 //!         let mut msg = [0u16; MAX_FRAME_SIZE];
 //!         // your implementation
 //!         Ok(Data(Box::new(msg)))
 //!     }
 //!
-//!     fn is_data2read(&self) -> Result<IntfResult, IntfError> {
+//!     fn is_data2read(&mut self) -> Result<IntfResult, IntfError> {
 //!         // your implementation
 //!         Ok(Success)
 //!     }
@@ -62,6 +62,8 @@ pub mod mcb_node;
 
 /// Maximum size of a single frame
 pub const MAX_FRAME_SIZE: usize = 128;
+
+const MAX_STD_CFG_DATA: usize = 8;
 
 const CFG_EXT_BIT: u16 = 0x0001;
 const CFG_ERR_BIT: u16 = 0x0008;
@@ -93,9 +95,17 @@ pub enum IntfResult {
 #[derive(Debug)]
 pub enum IntfError {
     Interface,
+    WrongCommand,
     Access(u32),
     AddressOutOfIndex,
     Crc,
+}
+
+/// How extended frames are transmitted
+#[derive(Debug)]
+pub enum ExtMode {
+    Segmented,
+    Extended
 }
 
 #[derive(Clone, Copy)]
@@ -109,24 +119,24 @@ pub trait PhysicalInterface {
     /// and write some data to the interface. The frame slice type is u16
     /// because this protocol works in words, specially when it is implemented
     /// over SPI
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError>;
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError>;
 
     /// This function is called everytime the procotol needs to access
     /// and read some data from the interface. The frame slice type is u16
     /// because this protocol works in words, specially when it is implemented
     /// over SPI
-    fn raw_read(&self) -> Result<IntfResult, IntfError>;
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError>;
 
     /// This function checks if there is data available to be read. If not needed, use
     /// the default implementation
-    fn is_data2read(&self) -> Result<IntfResult, IntfError> {
+    fn is_data2read(&mut self) -> Result<IntfResult, IntfError> {
         Ok(IntfResult::Success)
     }
 
     /// This trait is availabble to offer the option to compute the CRC through a HW
     /// accelerator or dedicated peripheral. Otherwise, the default implementation is
     /// available
-    fn crc_checksum(&self, frame: &[u16]) -> u16 {
+    fn crc_checksum(&mut self, frame: &[u16]) -> u16 {
         const XMODEM: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
         unsafe { XMODEM.checksum(frame[..6].align_to::<u8>().1) }
     }

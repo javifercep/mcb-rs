@@ -1,11 +1,14 @@
-use crate::*;
+use std::iter::Peekable;
 
+use crate::*;
+#[derive(Debug)]
 pub enum CommandType {
     Read,
     Write,
     StateChange,
 }
 pub struct Request {
+    pub subnode: u8,
     pub address: u16,
     pub command: CommandType,
     data_value: [u16; MAX_FRAME_SIZE],
@@ -14,6 +17,7 @@ pub struct Node<STATE, INTERFACE: PhysicalInterface> {
     frame: Frame,
     _state: STATE,
     interface: INTERFACE,
+    ext_mode: ExtMode,
 }
 
 /// These functions may be used on any Mcb struct
@@ -26,6 +30,7 @@ where
             frame: self.frame,
             _state: Config,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
@@ -104,6 +109,53 @@ where
         self.write_u64(add, data as u64)
     }
 
+    pub fn write_str(&mut self, add: u16, data: &str) -> Result<IntfResult, IntfError> {
+        match self.ext_mode {
+            ExtMode::Segmented => Err(IntfError::Interface),
+            ExtMode::Extended =>{
+                let size = data.len();
+                if size > MAX_STD_CFG_DATA {
+                    self.frame.raw[HEADER_IDX] = self.frame.address;
+                    self.frame.raw[COMMAND_IDX] = CFG_EXT_ACK + (add << 4);
+                    self.frame.raw[CFG_DATA_IDX] = size as u16;
+                    self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
+
+                    let mut char_list =  data.chars();
+                    let mut char_value = char_list.next();
+                    let mut count = 7;
+                    while let Some(_) = char_value {
+                        self.frame.raw[count] = char_value.unwrap() as u16;
+                        char_value = char_list.next();
+                        if let Some(_) = char_value {
+                            self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
+                        };
+                        char_value = char_list.next();
+                        count = count + 1;
+                    }
+            
+                    let built_frame = &self.frame.raw[..7 + size];
+            
+                    self.interface.raw_write(built_frame)
+                }
+                else {
+                    let mut char_list =  data.chars();
+                    let mut char_value = char_list.next();
+                    let mut count = 0;
+                    while let Some(_) = char_value {
+                        self.frame.raw[CFG_DATA_IDX + count] = char_value.unwrap() as u16;
+                        char_value = char_list.next();
+                        if let Some(_) = char_value {
+                            self.frame.raw[CFG_DATA_IDX + count] |= (char_value.unwrap() as u16) << 8;
+                        };
+                        char_value = char_list.next();
+                        count = count + 1;
+                    }
+                    self.write_internal(add, CFG_STD_ACK)
+                }
+            }
+        }
+    }
+
     pub fn read(&mut self) -> Result<Request, IntfError> {
         let data = match self.interface.raw_read() {
             Ok(IntfResult::Data(value)) => value,
@@ -117,10 +169,11 @@ where
         let command = match data[1] & 0xEu16 {
             CFG_STD_READ => CommandType::Read,
             CFG_STD_WRITE => CommandType::Write,
-            _ => return Err(IntfError::Interface),
+            _ => return Err(IntfError::WrongCommand),
         };
 
         Ok(Request {
+            subnode: data[HEADER_IDX] as u8 & 0xfu8,
             address: data[COMMAND_IDX] >> 4,
             command,
             data_value: *data,
@@ -171,7 +224,7 @@ where
         self.get_data_u64(request) as f64
     }
 
-    pub fn listen(&self) -> Result<IntfResult, IntfError> {
+    pub fn listen(&mut self) -> Result<IntfResult, IntfError> {
         self.interface.is_data2read()
     }
 
@@ -180,6 +233,7 @@ where
             frame: self.frame,
             _state: Cyclic,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
@@ -218,6 +272,7 @@ where
         };
 
         Ok(Request {
+            subnode: data[HEADER_IDX] as u8 & 0xfu8,
             address: data[COMMAND_IDX] >> 4,
             command,
             data_value: *data,
@@ -229,11 +284,12 @@ where
             frame: self.frame,
             _state: Config,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
 
-pub fn create_node_mcb<INTF: PhysicalInterface>(interface: Option<INTF>) -> Node<Init, INTF> {
+pub fn create_node_mcb<INTF: PhysicalInterface>(interface: Option<INTF>, mode: ExtMode) -> Node<Init, INTF> {
     let interface_in = interface.unwrap();
     Node {
         frame: Frame {
@@ -242,5 +298,6 @@ pub fn create_node_mcb<INTF: PhysicalInterface>(interface: Option<INTF>) -> Node
         },
         _state: Init,
         interface: interface_in,
+        ext_mode: mode,
     }
 }

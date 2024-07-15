@@ -5,6 +5,7 @@ pub struct Main<STATE, INTERFACE: PhysicalInterface> {
     frame: Frame,
     _state: STATE,
     interface: INTERFACE,
+    ext_mode: ExtMode,
 }
 
 /// These functions may be used on any Mcb struct
@@ -17,6 +18,7 @@ where
             frame: self.frame,
             _state: Config,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
@@ -231,6 +233,7 @@ where
             frame: self.frame,
             _state: Cyclic,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
@@ -298,11 +301,12 @@ where
             frame: self.frame,
             _state: Config,
             interface: self.interface,
+            ext_mode: self.ext_mode,
         }
     }
 }
 
-pub fn create_main_mcb<INTF: PhysicalInterface>(interface: Option<INTF>) -> Main<Init, INTF> {
+pub fn create_main_mcb<INTF: PhysicalInterface>(interface: Option<INTF>, mode: ExtMode) -> Main<Init, INTF> {
     let interface_in = interface.unwrap();
     Main {
         frame: Frame {
@@ -311,5 +315,6 @@ pub fn create_main_mcb<INTF: PhysicalInterface>(interface: Option<INTF>) -> Main
         },
         _state: Init,
         interface: interface_in,
+        ext_mode: mode,
     }
 }

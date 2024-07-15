@@ -1,6 +1,5 @@
+use mcb::{Config, Init, IntfError, IntfResult, PhysicalInterface, ExtMode, MAX_FRAME_SIZE};
 use mcb::mcb_main::{create_main_mcb, Main};
-use mcb::{Config, Init, IntfError, IntfResult, PhysicalInterface, MAX_FRAME_SIZE};
-
 use mcb::mcb_node::{create_node_mcb, CommandType, Node, Request};
 
 use mcb::IntfResult::*;
@@ -71,7 +70,7 @@ fn create_wrongmain_node_thread<T>() -> (NodeThread<T>, MainThreadWrongCRC<T>) {
 }
 
 impl PhysicalInterface for NodeThread<[u16; MAX_FRAME_SIZE]> {
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
         let mut msg = [0u16; MAX_FRAME_SIZE];
 
         msg[..frame.len()].copy_from_slice(frame);
@@ -79,14 +78,14 @@ impl PhysicalInterface for NodeThread<[u16; MAX_FRAME_SIZE]> {
         self.tx_channel.send(msg).unwrap();
         Ok(Success)
     }
-    fn raw_read(&self) -> Result<IntfResult, IntfError> {
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
         let msg = self.rx_channel.recv().unwrap();
         Ok(Data(Box::new(msg)))
     }
 }
 
 impl PhysicalInterface for MainThread<[u16; MAX_FRAME_SIZE]> {
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
         let mut msg = [0u16; MAX_FRAME_SIZE];
 
         msg[..frame.len()].copy_from_slice(frame);
@@ -95,14 +94,14 @@ impl PhysicalInterface for MainThread<[u16; MAX_FRAME_SIZE]> {
         Ok(Success)
     }
 
-    fn raw_read(&self) -> Result<IntfResult, IntfError> {
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
         let msg = self.rx_channel.recv().unwrap();
         Ok(Data(Box::new(msg)))
     }
 }
 
 impl PhysicalInterface for NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]> {
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
         let mut msg = [0u16; MAX_FRAME_SIZE];
 
         msg[..frame.len()].copy_from_slice(frame);
@@ -110,19 +109,19 @@ impl PhysicalInterface for NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]> {
         self.0.tx_channel.send(msg).unwrap();
         Ok(Success)
     }
-    fn raw_read(&self) -> Result<IntfResult, IntfError> {
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
         let msg = self.0.rx_channel.recv().unwrap();
         Ok(Data(Box::new(msg)))
     }
 
-    fn crc_checksum(&self, _frame: &[u16]) -> u16 {
+    fn crc_checksum(&mut self, _frame: &[u16]) -> u16 {
         let result: u16 = 0u16;
         result
     }
 }
 
 impl PhysicalInterface for MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]> {
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
         let mut msg = [0u16; MAX_FRAME_SIZE];
 
         msg[..frame.len()].copy_from_slice(frame);
@@ -131,22 +130,40 @@ impl PhysicalInterface for MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]> {
         Ok(Success)
     }
 
-    fn raw_read(&self) -> Result<IntfResult, IntfError> {
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
         let msg = self.0.rx_channel.recv().unwrap();
         Ok(Data(Box::new(msg)))
     }
 
-    fn crc_checksum(&self, _frame: &[u16]) -> u16 {
+    fn crc_checksum(&mut self, _frame: &[u16]) -> u16 {
         let result: u16 = 0u16;
         result
     }
+}
+
+fn init_main(
+    main_thread: MainThread<[u16; MAX_FRAME_SIZE]>,
+) -> Main<Config, MainThread<[u16; MAX_FRAME_SIZE]>> {
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread), ExtMode::Extended);
+
+    mcb_main_test.init()
+}
+
+fn init_wrong_main(
+    main_thread: MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>,
+) -> Main<Config, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> {
+    let mcb_main_test: Main<Init, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread), ExtMode::Extended);
+
+    mcb_main_test.init()
 }
 
 fn init_node(
     node_thread: NodeThread<[u16; MAX_FRAME_SIZE]>,
 ) -> Node<Config, NodeThread<[u16; MAX_FRAME_SIZE]>> {
     let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
-        create_node_mcb(Some(node_thread));
+        create_node_mcb(Some(node_thread), ExtMode::Extended);
 
     mcb_node_test.init()
 }
@@ -155,7 +172,7 @@ fn init_wrong_node(
     node_thread: NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>,
 ) -> Node<Config, NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> {
     let mcb_node_test: Node<Init, NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> =
-        create_node_mcb(Some(node_thread));
+        create_node_mcb(Some(node_thread), ExtMode::Extended);
 
     mcb_node_test.init()
 }
@@ -238,9 +255,7 @@ fn test_std_read_u8() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg= init_main(main_thread);
     let result = mcb_main_cfg.read_u8(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -275,9 +290,7 @@ fn test_std_write_u8() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u8(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -311,9 +324,7 @@ fn test_std_read_u16() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u16(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -349,9 +360,7 @@ fn test_std_write_u16() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u16(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -385,9 +394,7 @@ fn test_std_read_u32() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u32(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -422,9 +429,7 @@ fn test_std_write_u32() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u32(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -458,9 +463,7 @@ fn test_std_read_u64() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u64(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -495,9 +498,7 @@ fn test_std_write_u64() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u64(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -531,9 +532,7 @@ fn test_std_read_i8() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_i8(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -568,9 +567,7 @@ fn test_std_write_i8() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_i8(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -604,9 +601,7 @@ fn test_std_read_i16() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_i16(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -642,9 +637,7 @@ fn test_std_write_i16() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_i16(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -678,9 +671,7 @@ fn test_std_read_i32() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_i32(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -715,9 +706,7 @@ fn test_std_write_i32() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_i32(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -751,9 +740,7 @@ fn test_std_read_i64() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_i64(ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
@@ -788,9 +775,7 @@ fn test_std_write_i64() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_i64(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -824,9 +809,7 @@ fn test_std_read_f32() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_f32(ADDRESS);
 
     assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f32::EPSILON);
@@ -861,9 +844,7 @@ fn test_std_write_f32() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_f32(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -897,9 +878,7 @@ fn test_std_read_f64() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_f64(ADDRESS);
 
     assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f64::EPSILON);
@@ -934,9 +913,7 @@ fn test_std_write_f64() {
         }
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_f64(ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
@@ -947,9 +924,7 @@ fn test_main_write_out_of_index_address() {
     const ADDRESS: u16 = 0x1000u16;
     let (_node_thread, main_thread) = create_mainnodethread();
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u8(ADDRESS, 1u8);
 
     assert!(matches!(result, Err(IntfError::AddressOutOfIndex)));
@@ -960,9 +935,7 @@ fn test_main_read_out_of_index_address() {
     const ADDRESS: u16 = 0x1000u16;
     let (_node_thread, main_thread) = create_mainnodethread();
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u8(ADDRESS);
 
     assert!(matches!(result, Err(IntfError::AddressOutOfIndex)));
@@ -995,9 +968,7 @@ fn test_main_write_unexistent_register() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.write_u8(ADDRESS, 1u8);
 
     assert!(matches!(result, Err(IntfError::Access(0x80005000u32))));
@@ -1030,9 +1001,7 @@ fn test_main_read_unexistent_register() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u8(ADDRESS);
 
     assert!(matches!(result, Err(IntfError::Access(0x80005000u32))));
@@ -1058,9 +1027,7 @@ fn test_main_wrong_node_crc() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_main(main_thread);
     let result = mcb_main_cfg.read_u8(ADDRESS);
 
     assert!(matches!(result, Err(IntfError::Crc)));
@@ -1086,9 +1053,7 @@ fn test_node_wrong_main_crc() {
         };
     });
 
-    let mcb_main_test: Main<Init, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread));
-    let mut mcb_main_cfg = mcb_main_test.init();
+    let mut mcb_main_cfg = init_wrong_main(main_thread);
     let result = mcb_main_cfg.read_u8(ADDRESS);
     assert!(matches!(result, Err(IntfError::Crc)));
 }

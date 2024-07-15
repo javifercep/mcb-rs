@@ -23,19 +23,19 @@ the [`PhysicalInterface`] trait.
 
 ```rust
 use mcb::mcb_main::{create_main_mcb, Main};
-use mcb::{Config, Init, IntfError, IntfResult, PhysicalInterface, MAX_FRAME_SIZE};
+use mcb::{Config, Init, IntfError, IntfResult, ExtMode, PhysicalInterface, MAX_FRAME_SIZE};
 use mcb::IntfResult::*;
 
 struct NewInterface;
 
 impl PhysicalInterface for NewInterface {
     
-    fn raw_write(&self, frame: &[u16]) -> Result<IntfResult, IntfError> {
+    fn raw_write(&mut self, frame: &[u16]) -> Result<IntfResult, IntfError> {
     // your implementation
     Ok(Success)
     }
 
-    fn raw_read(&self) -> Result<IntfResult, IntfError> {
+    fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
         // ignore this block. Created to pass cargo test --doc
         let mut msg = [0u16; MAX_FRAME_SIZE];
         msg[1] = 166;
@@ -46,7 +46,7 @@ impl PhysicalInterface for NewInterface {
         Ok(Data(Box::new(msg)))
     }
 
-    fn is_data2read(&self) -> Result<IntfResult, IntfError> {
+    fn is_data2read(&mut self) -> Result<IntfResult, IntfError> {
         // your implementation
         Ok(Success)
     }
@@ -55,7 +55,7 @@ impl PhysicalInterface for NewInterface {
 fn main() {
     let interface: NewInterface = NewInterface;
 
-    let mcb_main = create_main_mcb(Some(interface));
+    let mcb_main = create_main_mcb(Some(interface), ExtMode::Extended);
     
     let mut mcb_main_cfg = mcb_main.init();
     let result = mcb_main_cfg.writeu8(0x0Au16, 1u8);
