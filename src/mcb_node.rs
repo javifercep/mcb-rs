@@ -1,10 +1,10 @@
-use std::iter::Peekable;
-
 use crate::*;
 #[derive(Debug)]
 pub enum CommandType {
     Read,
     Write,
+    ExtRead,
+    ExtWrite,
     StateChange,
 }
 pub struct Request {
@@ -41,7 +41,7 @@ where
     INTF: PhysicalInterface,
 {
     fn write_internal(&mut self, add: u16, cmd: u16) -> Result<IntfResult, IntfError> {
-        self.frame.raw[HEADER_IDX] = self.frame.address;
+        self.frame.raw[HEADER_IDX] = self.frame.subnode as u16;
         self.frame.raw[COMMAND_IDX] = cmd + (add << 4);
         self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
 
@@ -55,6 +55,10 @@ where
         self.frame.raw[CFG_DATA_IDX + 1] = (err >> 16) as u16;
 
         self.write_internal(0, CFG_ERR_BIT | addcmd)
+    }
+
+    pub fn ack(&mut self, add: u16) -> Result<IntfResult, IntfError> {
+        self.write_internal(add, CFG_STD_ACK)
     }
 
     pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
@@ -110,54 +114,95 @@ where
     }
 
     pub fn write_str(&mut self, add: u16, data: &str) -> Result<IntfResult, IntfError> {
-        match self.ext_mode {
-            ExtMode::Segmented => Err(IntfError::Interface),
-            ExtMode::Extended =>{
-                let size = data.len();
-                if size > MAX_STD_CFG_DATA {
-                    self.frame.raw[HEADER_IDX] = self.frame.address;
+        let size = data.len();
+        if size < MAX_STD_CFG_DATA {
+            let mut char_list = data.chars();
+            let mut char_value = char_list.next();
+            let mut count = CFG_DATA_IDX;
+            while char_value.is_some() {
+                self.frame.raw[count] = char_value.unwrap() as u16;
+                char_value = char_list.next();
+                if char_value.is_some() {
+                    self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
+                    char_value = char_list.next();
+                } else {
+                    self.frame.raw[count] &= 0x0fu16;
+                    break;
+                }
+                count += 1;
+            }
+            self.frame.raw[count] = 0u16;
+            self.write_internal(add, CFG_STD_ACK)
+        } else {
+            self.frame.raw[HEADER_IDX] = self.frame.subnode as u16;
+
+            match self.ext_mode {
+                ExtMode::Segmented => {
+                    let mut char_list = data.chars();
+                    let mut char_value = char_list.next();
+                    let mut count = CFG_DATA_IDX;
+
+                    while char_value.is_some() {
+                        self.frame.raw[count] = char_value.unwrap() as u16;
+                        char_value = char_list.next();
+                        if char_value.is_some() {
+                            self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
+                            char_value = char_list.next();
+                        } else {
+                            self.frame.raw[count] &= 0x0fu16;
+                            count += 1;
+                            break;
+                        }
+
+                        if count == 5 {
+                            self.frame.raw[COMMAND_IDX] = CFG_EXT_ACK + (add << 4);
+                            self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
+                            let built_frame = &self.frame.raw[..7];
+                            if self.interface.raw_write(built_frame).is_err() {
+                                return Err(IntfError::Interface);
+                            }
+                            count = CFG_DATA_IDX;
+                        } else {
+                            count += 1;
+                        }
+                    }
+                    self.frame.raw[COMMAND_IDX] = CFG_STD_ACK + (add << 4);
+                    self.frame.raw[count] = 0u16;
+                    self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
+                    let built_frame = &self.frame.raw[..7];
+                    self.interface.raw_write(built_frame)
+                }
+                ExtMode::Extended => {
                     self.frame.raw[COMMAND_IDX] = CFG_EXT_ACK + (add << 4);
                     self.frame.raw[CFG_DATA_IDX] = size as u16;
                     self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
 
-                    let mut char_list =  data.chars();
+                    let mut char_list = data.chars();
                     let mut char_value = char_list.next();
                     let mut count = 7;
-                    while let Some(_) = char_value {
+                    while char_value.is_some() {
                         self.frame.raw[count] = char_value.unwrap() as u16;
                         char_value = char_list.next();
-                        if let Some(_) = char_value {
+                        if char_value.is_some() {
                             self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
-                        };
-                        char_value = char_list.next();
-                        count = count + 1;
+                            char_value = char_list.next();
+                        } else {
+                            self.frame.raw[count] &= 0x0fu16;
+                            break;
+                        }
+                        count += 1;
                     }
-            
+                    self.frame.raw[count] = 0u16;
                     let built_frame = &self.frame.raw[..7 + size];
-            
+
                     self.interface.raw_write(built_frame)
-                }
-                else {
-                    let mut char_list =  data.chars();
-                    let mut char_value = char_list.next();
-                    let mut count = 0;
-                    while let Some(_) = char_value {
-                        self.frame.raw[CFG_DATA_IDX + count] = char_value.unwrap() as u16;
-                        char_value = char_list.next();
-                        if let Some(_) = char_value {
-                            self.frame.raw[CFG_DATA_IDX + count] |= (char_value.unwrap() as u16) << 8;
-                        };
-                        char_value = char_list.next();
-                        count = count + 1;
-                    }
-                    self.write_internal(add, CFG_STD_ACK)
                 }
             }
         }
     }
 
     pub fn read(&mut self) -> Result<Request, IntfError> {
-        let data = match self.interface.raw_read() {
+        let mut data = match self.interface.raw_read() {
             Ok(IntfResult::Data(value)) => value,
             _ => return Err(IntfError::Interface),
         };
@@ -166,11 +211,45 @@ where
             return Err(IntfError::Crc);
         }
 
-        let command = match data[1] & 0xEu16 {
+        let command = match data[1] & 0xfu16 {
             CFG_STD_READ => CommandType::Read,
             CFG_STD_WRITE => CommandType::Write,
+            CFG_EXT_READ => CommandType::ExtRead,
+            CFG_EXT_WRITE => CommandType::ExtWrite,
             _ => return Err(IntfError::WrongCommand),
         };
+
+        if let ExtMode::Segmented = self.ext_mode {
+            let mut count = 6;
+            loop {
+                if self.ack(data[COMMAND_IDX] >> 4).is_err() {
+                    return Err(IntfError::Interface);
+                }
+
+                let mut is_ready = self.listen();
+
+                while let Ok(IntfResult::Empty) = is_ready {
+                    is_ready = self.listen();
+                }
+
+                let data_segment = match self.interface.raw_read() {
+                    Ok(IntfResult::Data(value)) => value,
+                    _ => return Err(IntfError::Interface),
+                };
+
+                if data_segment[6] != self.interface.crc_checksum(&data[..6]) {
+                    return Err(IntfError::Crc);
+                }
+
+                data[count..count + 4].copy_from_slice(&data_segment[2..6]);
+
+                count += 4;
+
+                if (data_segment[1] & 0x1u16) != CFG_EXT_BIT {
+                    break;
+                }
+            }
+        }
 
         Ok(Request {
             subnode: data[HEADER_IDX] as u8 & 0xfu8,
@@ -243,42 +322,6 @@ impl<INTF> Node<Cyclic, INTF>
 where
     INTF: PhysicalInterface,
 {
-    fn write_internal(&mut self, add: u16, cmd: u16) -> Result<IntfResult, IntfError> {
-        self.frame.raw[HEADER_IDX] = self.frame.address;
-        self.frame.raw[COMMAND_IDX] = cmd + (add << 4);
-        self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
-
-        let built_frame = &self.frame.raw[..7];
-
-        self.interface.raw_write(built_frame)
-    }
-
-    pub fn write_u8(&mut self, add: u16, data: u8) -> Result<IntfResult, IntfError> {
-        self.frame.raw[CFG_DATA_IDX] = data as u16;
-
-        self.write_internal(add, CFG_STD_ACK)
-    }
-
-    pub fn read(&mut self) -> Result<Request, IntfError> {
-        let data = match self.interface.raw_read() {
-            Ok(IntfResult::Data(value)) => value,
-            _ => return Err(IntfError::Interface),
-        };
-
-        let command = match data[1] & 0xEu16 {
-            CFG_STD_READ => CommandType::Read,
-            CFG_STD_WRITE => CommandType::Write,
-            _ => return Err(IntfError::Interface),
-        };
-
-        Ok(Request {
-            subnode: data[HEADER_IDX] as u8 & 0xfu8,
-            address: data[COMMAND_IDX] >> 4,
-            command,
-            data_value: *data,
-        })
-    }
-
     pub fn into_config(self) -> Node<Config, INTF> {
         Node {
             frame: self.frame,
@@ -289,11 +332,16 @@ where
     }
 }
 
-pub fn create_node_mcb<INTF: PhysicalInterface>(interface: Option<INTF>, mode: ExtMode) -> Node<Init, INTF> {
+pub fn create_node_mcb<INTF: PhysicalInterface>(
+    interface: Option<INTF>,
+    mode: ExtMode,
+    subnode: u8,
+) -> Node<Init, INTF> {
     let interface_in = interface.unwrap();
     Node {
         frame: Frame {
-            address: 0u16,
+            _address: 0u16,
+            subnode,
             raw: [0u16; MAX_FRAME_SIZE],
         },
         _state: Init,

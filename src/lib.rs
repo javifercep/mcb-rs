@@ -68,11 +68,11 @@ const MAX_STD_CFG_DATA: usize = 8;
 const CFG_EXT_BIT: u16 = 0x0001;
 const CFG_ERR_BIT: u16 = 0x0008;
 const CFG_STD_READ: u16 = 0x0002;
-const CFG_EXT_READ: u16 = CFG_STD_READ + CFG_EXT_BIT;
+const CFG_EXT_READ: u16 = CFG_STD_READ | CFG_EXT_BIT;
 const CFG_STD_WRITE: u16 = 0x0004;
-const CFG_EXT_WRITE: u16 = CFG_EXT_READ + CFG_EXT_BIT;
+const CFG_EXT_WRITE: u16 = CFG_STD_WRITE | CFG_EXT_BIT;
 const CFG_STD_ACK: u16 = 0x0006;
-const CFG_EXT_ACK: u16 = CFG_STD_ACK + CFG_EXT_BIT;
+const CFG_EXT_ACK: u16 = CFG_STD_ACK | CFG_EXT_BIT;
 const CFG_IDLE: u16 = 0x000E;
 
 const MAX_ADDRESS: u16 = 0x0FFF;
@@ -105,12 +105,13 @@ pub enum IntfError {
 #[derive(Debug)]
 pub enum ExtMode {
     Segmented,
-    Extended
+    Extended,
 }
 
 #[derive(Clone, Copy)]
 struct Frame {
-    address: u16,
+    _address: u16,
+    subnode: u8,
     raw: [u16; MAX_FRAME_SIZE],
 }
 /// This trait contains the implementation required to access to the Network/Bus

@@ -1,6 +1,6 @@
-use mcb::{Config, Init, IntfError, IntfResult, PhysicalInterface, ExtMode, MAX_FRAME_SIZE};
 use mcb::mcb_main::{create_main_mcb, Main};
 use mcb::mcb_node::{create_node_mcb, CommandType, Node, Request};
+use mcb::{Config, ExtMode, Init, IntfError, IntfResult, PhysicalInterface, MAX_FRAME_SIZE};
 
 use mcb::IntfResult::*;
 
@@ -8,6 +8,9 @@ use std::thread;
 use std::{sync::mpsc, sync::mpsc::Receiver, sync::mpsc::Sender};
 
 use float_eq::assert_float_eq;
+
+const MAIN_SUBNODE: u8 = 1u8;
+const NODE_SUBNODE: u8 = 2u8;
 
 struct NodeThread<T> {
     tx_channel: Sender<T>,
@@ -145,7 +148,7 @@ fn init_main(
     main_thread: MainThread<[u16; MAX_FRAME_SIZE]>,
 ) -> Main<Config, MainThread<[u16; MAX_FRAME_SIZE]>> {
     let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread), ExtMode::Extended);
+        create_main_mcb(Some(main_thread), ExtMode::Extended, MAIN_SUBNODE);
 
     mcb_main_test.init()
 }
@@ -154,7 +157,7 @@ fn init_wrong_main(
     main_thread: MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>,
 ) -> Main<Config, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> {
     let mcb_main_test: Main<Init, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> =
-        create_main_mcb(Some(main_thread), ExtMode::Extended);
+        create_main_mcb(Some(main_thread), ExtMode::Extended, MAIN_SUBNODE);
 
     mcb_main_test.init()
 }
@@ -163,7 +166,7 @@ fn init_node(
     node_thread: NodeThread<[u16; MAX_FRAME_SIZE]>,
 ) -> Node<Config, NodeThread<[u16; MAX_FRAME_SIZE]>> {
     let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
-        create_node_mcb(Some(node_thread), ExtMode::Extended);
+        create_node_mcb(Some(node_thread), ExtMode::Extended, NODE_SUBNODE);
 
     mcb_node_test.init()
 }
@@ -172,7 +175,7 @@ fn init_wrong_node(
     node_thread: NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>,
 ) -> Node<Config, NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> {
     let mcb_node_test: Node<Init, NodeThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> =
-        create_node_mcb(Some(node_thread), ExtMode::Extended);
+        create_node_mcb(Some(node_thread), ExtMode::Extended, NODE_SUBNODE);
 
     mcb_node_test.init()
 }
@@ -255,8 +258,8 @@ fn test_std_read_u8() {
         };
     });
 
-    let mut mcb_main_cfg= init_main(main_thread);
-    let result = mcb_main_cfg.read_u8(ADDRESS);
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -291,7 +294,7 @@ fn test_std_write_u8() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u8(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_u8(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -325,7 +328,7 @@ fn test_std_read_u16() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u16(ADDRESS);
+    let result = mcb_main_cfg.read_u16(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -361,7 +364,7 @@ fn test_std_write_u16() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u16(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_u16(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -395,7 +398,7 @@ fn test_std_read_u32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u32(ADDRESS);
+    let result = mcb_main_cfg.read_u32(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -430,7 +433,7 @@ fn test_std_write_u32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u32(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_u32(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -464,7 +467,7 @@ fn test_std_read_u64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u64(ADDRESS);
+    let result = mcb_main_cfg.read_u64(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -499,7 +502,7 @@ fn test_std_write_u64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u64(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_u64(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -533,7 +536,7 @@ fn test_std_read_i8() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_i8(ADDRESS);
+    let result = mcb_main_cfg.read_i8(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -568,7 +571,7 @@ fn test_std_write_i8() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_i8(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_i8(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -602,7 +605,7 @@ fn test_std_read_i16() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_i16(ADDRESS);
+    let result = mcb_main_cfg.read_i16(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -638,7 +641,7 @@ fn test_std_write_i16() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_i16(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_i16(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -672,7 +675,7 @@ fn test_std_read_i32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_i32(ADDRESS);
+    let result = mcb_main_cfg.read_i32(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -707,7 +710,7 @@ fn test_std_write_i32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_i32(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_i32(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -741,7 +744,7 @@ fn test_std_read_i64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_i64(ADDRESS);
+    let result = mcb_main_cfg.read_i64(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Ok(DATA)));
 }
@@ -776,7 +779,7 @@ fn test_std_write_i64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_i64(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_i64(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -810,7 +813,7 @@ fn test_std_read_f32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_f32(ADDRESS);
+    let result = mcb_main_cfg.read_f32(NODE_SUBNODE, ADDRESS);
 
     assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f32::EPSILON);
 }
@@ -845,7 +848,7 @@ fn test_std_write_f32() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_f32(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_f32(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -879,7 +882,7 @@ fn test_std_read_f64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_f64(ADDRESS);
+    let result = mcb_main_cfg.read_f64(NODE_SUBNODE, ADDRESS);
 
     assert_float_eq!(result.unwrap() - DATA, 0.0, abs <= f64::EPSILON);
 }
@@ -914,7 +917,7 @@ fn test_std_write_f64() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_f64(ADDRESS, DATA);
+    let result = mcb_main_cfg.write_f64(NODE_SUBNODE, ADDRESS, DATA);
 
     assert!(matches!(result, Ok(IntfResult::Success)));
 }
@@ -925,7 +928,7 @@ fn test_main_write_out_of_index_address() {
     let (_node_thread, main_thread) = create_mainnodethread();
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u8(ADDRESS, 1u8);
+    let result = mcb_main_cfg.write_u8(NODE_SUBNODE, ADDRESS, 1u8);
 
     assert!(matches!(result, Err(IntfError::AddressOutOfIndex)));
 }
@@ -936,7 +939,7 @@ fn test_main_read_out_of_index_address() {
     let (_node_thread, main_thread) = create_mainnodethread();
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u8(ADDRESS);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Err(IntfError::AddressOutOfIndex)));
 }
@@ -969,7 +972,7 @@ fn test_main_write_unexistent_register() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.write_u8(ADDRESS, 1u8);
+    let result = mcb_main_cfg.write_u8(NODE_SUBNODE, ADDRESS, 1u8);
 
     assert!(matches!(result, Err(IntfError::Access(0x80005000u32))));
 }
@@ -1002,7 +1005,7 @@ fn test_main_read_unexistent_register() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u8(ADDRESS);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Err(IntfError::Access(0x80005000u32))));
 }
@@ -1028,7 +1031,7 @@ fn test_main_wrong_node_crc() {
     });
 
     let mut mcb_main_cfg = init_main(main_thread);
-    let result = mcb_main_cfg.read_u8(ADDRESS);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
 
     assert!(matches!(result, Err(IntfError::Crc)));
 }
@@ -1054,6 +1057,6 @@ fn test_node_wrong_main_crc() {
     });
 
     let mut mcb_main_cfg = init_wrong_main(main_thread);
-    let result = mcb_main_cfg.read_u8(ADDRESS);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
     assert!(matches!(result, Err(IntfError::Crc)));
 }
