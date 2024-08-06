@@ -4,6 +4,7 @@ use mcb::{Config, ExtMode, Init, IntfError, IntfResult, PhysicalInterface, MAX_F
 
 use mcb::IntfResult::*;
 
+use std::sync::mpsc::RecvError;
 use std::thread;
 use std::{sync::mpsc, sync::mpsc::Receiver, sync::mpsc::Sender};
 
@@ -82,7 +83,10 @@ impl PhysicalInterface for NodeThread<[u16; MAX_FRAME_SIZE]> {
         Ok(Success)
     }
     fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
-        let msg = self.rx_channel.recv().unwrap();
+        let msg = match self.rx_channel.recv() {
+            Ok(value) => value,
+            Err(RecvError) => return Err(IntfError::Interface),
+        };
         Ok(Data(Box::new(msg)))
     }
 }
@@ -98,7 +102,10 @@ impl PhysicalInterface for MainThread<[u16; MAX_FRAME_SIZE]> {
     }
 
     fn raw_read(&mut self) -> Result<IntfResult, IntfError> {
-        let msg = self.rx_channel.recv().unwrap();
+        let msg = match self.rx_channel.recv() {
+            Ok(value) => value,
+            Err(RecvError) => return Err(IntfError::Interface),
+        };
         Ok(Data(Box::new(msg)))
     }
 }
@@ -153,6 +160,15 @@ fn init_main(
     mcb_main_test.init()
 }
 
+fn init_segmented_main(
+    main_thread: MainThread<[u16; MAX_FRAME_SIZE]>,
+) -> Main<Config, MainThread<[u16; MAX_FRAME_SIZE]>> {
+    let mcb_main_test: Main<Init, MainThread<[u16; MAX_FRAME_SIZE]>> =
+        create_main_mcb(Some(main_thread), ExtMode::Segmented, MAIN_SUBNODE);
+
+    mcb_main_test.init()
+}
+
 fn init_wrong_main(
     main_thread: MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>,
 ) -> Main<Config, MainThreadWrongCRC<[u16; MAX_FRAME_SIZE]>> {
@@ -167,6 +183,15 @@ fn init_node(
 ) -> Node<Config, NodeThread<[u16; MAX_FRAME_SIZE]>> {
     let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
         create_node_mcb(Some(node_thread), ExtMode::Extended, NODE_SUBNODE);
+
+    mcb_node_test.init()
+}
+
+fn init_segmented_node(
+    node_thread: NodeThread<[u16; MAX_FRAME_SIZE]>,
+) -> Node<Config, NodeThread<[u16; MAX_FRAME_SIZE]>> {
+    let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
+        create_node_mcb(Some(node_thread), ExtMode::Segmented, NODE_SUBNODE);
 
     mcb_node_test.init()
 }
@@ -197,6 +222,7 @@ fn get_request(
     let request = match node_cfg.read() {
         Ok(request) => request,
         Err(IntfError::Crc) => return Err(IntfError::Crc),
+        Err(IntfError::WrongSubnode) => return Err(IntfError::WrongSubnode),
         _ => {
             panic!("Something wrong");
         }
@@ -1059,4 +1085,393 @@ fn test_node_wrong_main_crc() {
     let mut mcb_main_cfg = init_wrong_main(main_thread);
     let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
     assert!(matches!(result, Err(IntfError::Crc)));
+}
+
+#[test]
+#[should_panic(expected = "Wrong subnode")]
+fn test_node_write_wrong_subnode() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: u8 = 0xA5u8;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut mcb_main_cfg = init_main(main_thread);
+        let _result = mcb_main_cfg.write_u8(NODE_SUBNODE, ADDRESS, DATA);
+    });
+
+    let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
+        create_node_mcb(Some(node_thread), ExtMode::Extended, 3);
+
+    let mut node_cfg = mcb_node_test.init();
+
+    let _request = match get_request(&mut node_cfg) {
+        Ok(request) => request,
+        Err(IntfError::WrongSubnode) => panic!("Wrong subnode"),
+        _ => {
+            panic!("Something wrong");
+        }
+    };
+}
+
+#[test]
+#[should_panic(expected = "Wrong subnode")]
+fn test_node_read_wrong_subnode() {
+    const ADDRESS: u16 = 10u16;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut mcb_main_cfg = init_main(main_thread);
+        let _result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
+    });
+
+    let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
+        create_node_mcb(Some(node_thread), ExtMode::Extended, 3);
+
+    let mut node_cfg = mcb_node_test.init();
+
+    let _request = match get_request(&mut node_cfg) {
+        Ok(request) => request,
+        Err(IntfError::WrongSubnode) => panic!("Wrong subnode"),
+        _ => {
+            panic!("Something wrong");
+        }
+    };
+}
+
+#[test]
+fn test_wrong_subnode_answer_write() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: u8 = 0xA5u8;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
+            create_node_mcb(Some(node_thread), ExtMode::Extended, 3);
+
+        let mut node_cfg = mcb_node_test.init();
+
+        let _request = match get_request(&mut node_cfg) {
+            Ok(request) => Ok(request),
+            Err(IntfError::WrongSubnode) => {
+                // Simulate it answers wrongly
+                let _ = node_cfg.write_u8(ADDRESS, DATA);
+                Err(IntfError::WrongSubnode)
+            }
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.write_u8(NODE_SUBNODE, ADDRESS, DATA);
+
+    assert!(matches!(result, Err(IntfError::Access(0u32))));
+}
+
+#[test]
+fn test_wrong_subnode_answer_read() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: u8 = 0xA5u8;
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mcb_node_test: Node<Init, NodeThread<[u16; MAX_FRAME_SIZE]>> =
+            create_node_mcb(Some(node_thread), ExtMode::Extended, 3);
+
+        let mut node_cfg = mcb_node_test.init();
+
+        let _request = match get_request(&mut node_cfg) {
+            Ok(request) => Ok(request),
+            Err(IntfError::WrongSubnode) => {
+                // Simulate it answers wrongly
+                let _ = node_cfg.write_u8(ADDRESS, DATA);
+                Err(IntfError::WrongSubnode)
+            }
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.read_u8(NODE_SUBNODE, ADDRESS);
+
+    assert!(matches!(result, Err(IntfError::Access(0u32))));
+}
+
+#[test]
+fn test_std_write_small_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "small";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_str(&request) == DATA {
+            let _ = node_cfg.write_str(request.address, &DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.write_str(NODE_SUBNODE, ADDRESS, &DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_small_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "small";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_str(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.read_str(NODE_SUBNODE, ADDRESS);
+
+    assert_eq!(result.unwrap(), DATA);
+}
+
+#[test]
+fn test_std_write_big_extended_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "big_extended";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_str(&request) == DATA {
+            let _ = node_cfg.write_str(request.address, &DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.write_str(NODE_SUBNODE, ADDRESS, &DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_big_extended_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "big_extended";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_str(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mut mcb_main_cfg = init_main(main_thread);
+    let result = mcb_main_cfg.read_str(NODE_SUBNODE, ADDRESS);
+
+    assert_eq!(result.unwrap(), DATA);
+}
+
+#[test]
+fn test_std_write_small_segmented_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "small";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_segmented_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_str(&request) == DATA {
+            let _ = node_cfg.write_str(request.address, &DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mut mcb_main_cfg = init_segmented_main(main_thread);
+    let result = mcb_main_cfg.write_str(NODE_SUBNODE, ADDRESS, &DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_small_segmented_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "small";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_segmented_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_str(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mut mcb_main_cfg = init_segmented_main(main_thread);
+    let result = mcb_main_cfg.read_str(NODE_SUBNODE, ADDRESS);
+
+    assert_eq!(result.unwrap(), DATA);
+}
+
+#[test]
+fn test_std_write_big_segmented_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "big_segmented";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_segmented_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Write) {
+            panic!("Something wrong");
+        }
+
+        if node_cfg.get_data_str(&request) == DATA {
+            let _ = node_cfg.write_str(request.address, &DATA);
+        } else {
+            let _ = node_cfg.error(request.address, 0x0u32);
+        }
+    });
+
+    let mut mcb_main_cfg = init_segmented_main(main_thread);
+    let result = mcb_main_cfg.write_str(NODE_SUBNODE, ADDRESS, &DATA);
+
+    assert!(matches!(result, Ok(IntfResult::Success)));
+}
+
+#[test]
+fn test_std_read_big_segmented_str() {
+    const ADDRESS: u16 = 10u16;
+    const DATA: &str = "big_segmented";
+    let (node_thread, main_thread) = create_mainnodethread();
+
+    thread::spawn(move || {
+        let mut node_cfg = init_segmented_node(node_thread);
+        let request = match get_request(&mut node_cfg) {
+            Ok(request) => request,
+            _ => {
+                panic!("Something wrong");
+            }
+        };
+
+        if request.address != ADDRESS {
+            panic!("Something wrong");
+        }
+        if !matches!(request.command, CommandType::Read) {
+            panic!("Something wrong");
+        }
+
+        let _result = match node_cfg.write_str(request.address, DATA) {
+            Ok(Success) => true,
+            _ => false,
+        };
+    });
+
+    let mut mcb_main_cfg = init_segmented_main(main_thread);
+    let result = mcb_main_cfg.read_str(NODE_SUBNODE, ADDRESS);
+
+    assert_eq!(result.unwrap(), DATA);
 }

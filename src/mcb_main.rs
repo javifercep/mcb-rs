@@ -257,14 +257,16 @@ where
                     self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                     char_value = char_list.next();
                 } else {
-                    self.frame.raw[count] &= 0x0fu16;
-                    break;
+                    self.frame.raw[count] &= 0xffu16;
                 }
                 count += 1;
             }
 
             self.frame.raw[count] = 0u16;
-            self.internal_access(subnode, add, CFG_STD_WRITE)
+            match self.internal_access(subnode, add, CFG_STD_WRITE) {
+                Ok(_) => Ok(IntfResult::Success),
+                Err(e) => Err(e),
+            }
         } else {
             self.frame.raw[HEADER_IDX] = subnode as u16;
 
@@ -281,7 +283,7 @@ where
                             self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                             char_value = char_list.next();
                         } else {
-                            self.frame.raw[count] &= 0x0fu16;
+                            self.frame.raw[count] &= 0xffu16;
                             count += 1;
                             break;
                         }
@@ -302,7 +304,10 @@ where
                     self.frame.raw[count] = 0u16;
                     self.frame.raw[6] = self.interface.crc_checksum(&self.frame.raw);
                     let built_frame = &self.frame.raw[..7];
-                    self.interface.raw_write(built_frame)
+                    match self.interface.raw_write(built_frame) {
+                        Ok(_) => Ok(IntfResult::Success),
+                        Err(e) => Err(e),
+                    }
                 }
                 ExtMode::Extended => {
                     self.frame.raw[COMMAND_IDX] = CFG_EXT_WRITE + (add << 4);
@@ -320,7 +325,7 @@ where
                             self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                             char_value = char_list.next();
                         } else {
-                            self.frame.raw[count] &= 0x0fu16;
+                            self.frame.raw[count] &= 0xffu16;
                             break;
                         }
                         count += 1;
@@ -328,45 +333,66 @@ where
                     self.frame.raw[count] = 0u16;
                     let built_frame = &self.frame.raw[..7 + size];
 
-                    self.interface.raw_write(built_frame)
+                    match self.interface.raw_write(built_frame) {
+                        Ok(_) => Ok(IntfResult::Success),
+                        Err(e) => Err(e),
+                    }
                 }
             }
         }
     }
 
     pub fn read_str(&mut self, subnode: u8, add: u16) -> Result<String, IntfError> {
-        match self.internal_access(subnode, add, CFG_STD_READ) {
-            Ok(IntfResult::Data(value)) => {
-                let mut result: String = value[2..]
-                    .iter()
-                    .take_while(|&&u| u != 0)
-                    .map(|&u| std::char::from_u32(u as u32).unwrap())
-                    .collect();
+        match self.ext_mode {
+            ExtMode::Extended => {
+                let data_words = match self.internal_access(subnode, add, CFG_STD_READ) {
+                    Ok(IntfResult::Data(value)) => value,
+                    _ => return Err(IntfError::Interface),
+                };
 
-                if let ExtMode::Segmented = self.ext_mode {
-                    loop {
-                        let new_segment = match self.internal_access(subnode, add, CFG_STD_READ) {
-                            Ok(IntfResult::Data(value)) => value,
-                            _ => return Err(IntfError::Interface),
-                        };
+                let data_bytes = unsafe { data_words[2..].align_to::<u8>().1 };
 
-                        let string_segment: String = new_segment[2..]
-                            .iter()
-                            .take_while(|&&u| u != 0)
-                            .map(|&u| std::char::from_u32(u as u32).unwrap())
-                            .collect();
+                if (data_words[1] & 0x1u16) != CFG_EXT_BIT {
+                    let string_result: String = data_bytes[..]
+                        .iter()
+                        .take_while(|&&u| u != 0)
+                        .map(|&u| std::char::from_u32(u as u32).unwrap())
+                        .collect();
 
-                        result.push_str(&string_segment);
+                    Ok(string_result)
+                } else {
+                    let string_result: String = data_bytes[10..]
+                        .iter()
+                        .take_while(|&&u| u != 0)
+                        .map(|&u| std::char::from_u32(u as u32).unwrap())
+                        .collect();
 
-                        if (new_segment[1] & 0x1u16) != CFG_EXT_BIT {
-                            break;
-                        }
+                    Ok(string_result)
+                }
+            }
+            ExtMode::Segmented => {
+                let mut result = String::new();
+                loop {
+                    let data_words = match self.internal_access(subnode, add, CFG_STD_READ) {
+                        Ok(IntfResult::Data(value)) => value,
+                        _ => return Err(IntfError::Interface),
+                    };
+
+                    let data_bytes = unsafe { data_words[2..6].align_to::<u8>().1 };
+                    let string_segment: String = data_bytes[..]
+                        .iter()
+                        .take_while(|&&u| u != 0)
+                        .map(|&u| std::char::from_u32(u as u32).unwrap())
+                        .collect();
+
+                    result.push_str(&string_segment);
+
+                    if (data_words[1] & 0x1u16) != CFG_EXT_BIT {
+                        break;
                     }
                 }
                 Ok(result)
             }
-            Err(e) => Err(e),
-            _ => Err(IntfError::Interface),
         }
     }
 

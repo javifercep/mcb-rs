@@ -126,8 +126,7 @@ where
                     self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                     char_value = char_list.next();
                 } else {
-                    self.frame.raw[count] &= 0x0fu16;
-                    break;
+                    self.frame.raw[count] &= 0xffu16;
                 }
                 count += 1;
             }
@@ -149,7 +148,7 @@ where
                             self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                             char_value = char_list.next();
                         } else {
-                            self.frame.raw[count] &= 0x0fu16;
+                            self.frame.raw[count] &= 0xffu16;
                             count += 1;
                             break;
                         }
@@ -162,6 +161,23 @@ where
                                 return Err(IntfError::Interface);
                             }
                             count = CFG_DATA_IDX;
+
+                            let data = match self.interface.raw_read() {
+                                Ok(IntfResult::Data(value)) => value,
+                                _ => return Err(IntfError::Interface),
+                            };
+
+                            if (data[0] & 0xfu16) != self.frame.subnode as u16 {
+                                return Err(IntfError::WrongSubnode);
+                            }
+
+                            if data[6] != self.interface.crc_checksum(&data[..6]) {
+                                return Err(IntfError::Crc);
+                            }
+
+                            if (data[1] & 0xfu16) != CFG_STD_READ {
+                                return Err(IntfError::WrongCommand);
+                            }
                         } else {
                             count += 1;
                         }
@@ -187,7 +203,7 @@ where
                             self.frame.raw[count] |= (char_value.unwrap() as u16) << 8;
                             char_value = char_list.next();
                         } else {
-                            self.frame.raw[count] &= 0x0fu16;
+                            self.frame.raw[count] &= 0xffu16;
                             break;
                         }
                         count += 1;
@@ -207,6 +223,10 @@ where
             _ => return Err(IntfError::Interface),
         };
 
+        if (data[0] & 0xfu16) != self.frame.subnode as u16 {
+            return Err(IntfError::WrongSubnode);
+        }
+
         if data[6] != self.interface.crc_checksum(&data[..6]) {
             return Err(IntfError::Crc);
         }
@@ -215,41 +235,42 @@ where
             CFG_STD_READ => CommandType::Read,
             CFG_STD_WRITE => CommandType::Write,
             CFG_EXT_READ => CommandType::ExtRead,
-            CFG_EXT_WRITE => CommandType::ExtWrite,
+            CFG_EXT_WRITE => {
+                if let ExtMode::Segmented = self.ext_mode {
+                    let mut count = 6;
+                    loop {
+                        if self.ack(data[COMMAND_IDX] >> 4).is_err() {
+                            return Err(IntfError::Interface);
+                        }
+
+                        let mut is_ready = self.listen();
+
+                        while let Ok(IntfResult::Empty) = is_ready {
+                            is_ready = self.listen();
+                        }
+
+                        let data_segment = match self.interface.raw_read() {
+                            Ok(IntfResult::Data(value)) => value,
+                            _ => return Err(IntfError::Interface),
+                        };
+
+                        if data_segment[6] != self.interface.crc_checksum(&data[..6]) {
+                            return Err(IntfError::Crc);
+                        }
+
+                        data[count..count + 4].copy_from_slice(&data_segment[2..6]);
+
+                        count += 4;
+
+                        if (data_segment[1] & 0x1u16) != CFG_EXT_BIT {
+                            break;
+                        }
+                    }
+                }
+                CommandType::ExtWrite
+            }
             _ => return Err(IntfError::WrongCommand),
         };
-
-        if let ExtMode::Segmented = self.ext_mode {
-            let mut count = 6;
-            loop {
-                if self.ack(data[COMMAND_IDX] >> 4).is_err() {
-                    return Err(IntfError::Interface);
-                }
-
-                let mut is_ready = self.listen();
-
-                while let Ok(IntfResult::Empty) = is_ready {
-                    is_ready = self.listen();
-                }
-
-                let data_segment = match self.interface.raw_read() {
-                    Ok(IntfResult::Data(value)) => value,
-                    _ => return Err(IntfError::Interface),
-                };
-
-                if data_segment[6] != self.interface.crc_checksum(&data[..6]) {
-                    return Err(IntfError::Crc);
-                }
-
-                data[count..count + 4].copy_from_slice(&data_segment[2..6]);
-
-                count += 4;
-
-                if (data_segment[1] & 0x1u16) != CFG_EXT_BIT {
-                    break;
-                }
-            }
-        }
 
         Ok(Request {
             subnode: data[HEADER_IDX] as u8 & 0xfu8,
@@ -301,6 +322,17 @@ where
 
     pub fn get_data_f64(&self, request: &Request) -> f64 {
         self.get_data_u64(request) as f64
+    }
+
+    pub fn get_data_str(&self, request: &Request) -> String {
+        let data_bytes = unsafe { request.data_value[2..].align_to::<u8>().1 };
+        let result: String = data_bytes
+            .iter()
+            .take_while(|&&u| u != 0)
+            .map(|&u| std::char::from_u32(u as u32).unwrap())
+            .collect();
+
+        result
     }
 
     pub fn listen(&mut self) -> Result<IntfResult, IntfError> {

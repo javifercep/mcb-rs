@@ -96,6 +96,7 @@ pub enum IntfResult {
 pub enum IntfError {
     Interface,
     WrongCommand,
+    WrongSubnode,
     Access(u32),
     AddressOutOfIndex,
     Crc,
